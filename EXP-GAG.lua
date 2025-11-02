@@ -4,6 +4,25 @@
               Auto Sell, Auto Buy, Auto Collect, Event Automation, Mobile Support
     Version: 2.1 - Improved & Production Ready
     Based on real-world working patterns (2025)
+    
+    ============================================
+    ⚠️ SETUP REQUIRED BEFORE USE! ⚠️
+    ============================================
+    
+    1. Use RemoteSpy to find actual remote names in your game
+    2. Update config.Remotes with real remote paths
+    3. Update config.Positions with actual game coordinates
+    4. Fill config.BuyItems and config.PreferredSeeds with real item names
+    5. Only enable 1-2 features at a time for testing
+    
+    EXAMPLE CONFIGURATION:
+    config.Remotes.Sell = "ReplicatedStorage.GameEvents.SellInventory"
+    config.Positions.SellShop = CFrame.new(90.08035, 0.98381, 3.02662)
+    config.BuyItems = {"WateringCan", "Fertilizer"}
+    config.PreferredSeeds = {"BasicSeed", "GoldenSeed"}
+    config.AutoSell = true  -- Enable only this first
+    
+    See SETUP_GUIDE.md for detailed instructions!
 ]]
 
 -- Services
@@ -99,20 +118,58 @@ end
 
 -- Configuration
 local config = {
-    -- Feature Toggles
-    AutoFarm = true,
-    AutoPlant = true,
-    AutoHarvest = true,
-    AutoSell = true,
-    AutoBuy = true,
-    AutoCollect = true,      -- Auto collect bonus drops and items
-    PetSpawner = false,       -- Disabled by default (server-side validation)
-    EggSpawner = false,       -- Disabled by default (server-side validation)
-    SeedSpawner = true,
-    EventAutomation = true,
+    -- Feature Toggles (ENABLE ONLY 1-2 FEATURES AT A TIME FOR BEST RESULTS)
+    AutoFarm = false,          -- Disable if not confirmed working
+    AutoPlant = false,         -- Disable if not confirmed working
+    AutoHarvest = false,       -- Disable if not confirmed working
+    AutoSell = true,           -- Enable only if you know the remote name
+    AutoBuy = false,           -- Disable if not confirmed working
+    AutoCollect = false,       -- Auto collect bonus drops and items
+    PetSpawner = false,        -- Disabled (server-side validation)
+    EggSpawner = false,        -- Disabled (server-side validation)
+    SeedSpawner = false,       -- Disable if not confirmed working
+    EventAutomation = false,   -- Disable if not confirmed working
     MobileSupport = true,
     ShowGUI = true,
-    Humanization = true,      -- Enable humanization features
+    Humanization = true,       -- Enable humanization features
+    
+    -- HARD-CODED REMOTE NAMES (UPDATE THESE WITH ACTUAL REMOTE NAMES FROM YOUR GAME)
+    -- ⚠️ REQUIRED: You MUST fill these in using RemoteSpy or the script will NOT work!
+    -- ⚠️ Without these, features will show "Remote not found" errors and NOT work!
+    -- 
+    -- How to find remotes:
+    -- 1. Enable RemoteSpy in your executor
+    -- 2. Manually perform action in-game (sell, buy, plant, harvest)
+    -- 3. Watch RemoteSpy output for the remote that fires
+    -- 4. Copy the EXACT path (e.g., "ReplicatedStorage.GameEvents.SellInventory")
+    -- 5. Paste it below, replacing nil
+    --
+    -- Example format (MUST use quotes!):
+    -- Sell = "ReplicatedStorage.GameEvents.SellInventory"
+    -- NOT: Sell = ReplicatedStorage.GameEvents.SellInventory  (missing quotes!)
+    -- NOT: Sell = "game.ReplicatedStorage.GameEvents.SellInventory"  (no "game." prefix!)
+    Remotes = {
+        Sell = nil,            -- REQUIRED for AutoSell: e.g., "ReplicatedStorage.GameEvents.SellInventory"
+        Buy = nil,             -- REQUIRED for AutoBuy: e.g., "ReplicatedStorage.GameEvents.BuyItem"
+        Plant = nil,           -- REQUIRED for AutoPlant: e.g., "ReplicatedStorage.GameEvents.PlantSeed"
+        Harvest = nil,         -- REQUIRED for AutoHarvest: e.g., "ReplicatedStorage.GameEvents.HarvestCrop"
+        Water = nil,           -- REQUIRED for AutoFarm (watering): e.g., "ReplicatedStorage.GameEvents.WaterPlant"
+        Collect = nil,         -- Optional for AutoCollect: e.g., "ReplicatedStorage.GameEvents.CollectItem"
+        Event = nil,           -- Optional for EventAutomation: e.g., "ReplicatedStorage.GameEvents.CompleteEvent"
+    },
+    
+    -- HARD-CODED POSITIONS (OPTIONAL but recommended - UPDATE WITH ACTUAL GAME POSITIONS)
+    -- How to find positions: Walk to location in-game, use: print(game.Players.LocalPlayer.Character.HumanoidRootPart.Position)
+    -- Or use RemoteSpy to see shop/NPC positions
+    Positions = {
+        SellShop = nil,        -- Optional: CFrame.new(90.08035, 0.98381, 3.02662) - Replace with actual coordinates!
+        BuyShop = nil,         -- Optional: CFrame.new(x, y, z) - Replace with actual coordinates!
+        FarmArea = nil,        -- Optional: CFrame.new(x, y, z) - Replace with actual coordinates!
+        EventArea = nil,       -- Optional: CFrame.new(x, y, z) - Replace with actual coordinates!
+    },
+    
+    -- Teleport Settings
+    UseTeleport = false,       -- Use teleport instead of walking (faster but more detectable)
     
     -- Timing Settings (now using ranges for randomization)
     FarmDelayMin = 2.0,       -- Minimum delay between farm actions (seconds)
@@ -143,7 +200,10 @@ local config = {
     FertilizePlants = true,
     
     -- Seed Settings
-    PreferredSeeds = {}, -- Will auto-detect
+    -- ⚠️ REQUIRED if AutoPlant enabled: Fill with actual seed names from your game!
+    -- How to find: Check your inventory/seed shop, use actual seed names
+    -- Example: {"BasicSeed", "GoldenSeed", "RainbowSeed"}
+    PreferredSeeds = {},
     MaxSeeds = 100,
     MinSeeds = 10,
     
@@ -161,6 +221,9 @@ local config = {
     SellAll = false,
     
     -- Buy Settings
+    -- ⚠️ REQUIRED if AutoBuy enabled: Fill with actual item names you want to auto-buy!
+    -- How to find: Check shop inventory, use actual item names from the game
+    -- Example: {"WateringCan", "Fertilizer", "Upgrade1"}
     BuyItems = {},
     BuyInterval = 30,
     
@@ -176,13 +239,313 @@ local config = {
     ShowWarnings = true,      -- Show warnings about risky features
 }
 
--- Display warnings for risky features
-if config.ShowWarnings then
-    if config.PetSpawner or config.EggSpawner then
-        log("⚠️ WARNING: Pet/Egg Spawner enabled - May fail or trigger bans if game has server-side checks.", "WARNING")
+-- Feature Status Tracking
+local FeatureStatus = {
+    AutoSell = {enabled = false, working = false, lastError = nil},
+    AutoBuy = {enabled = false, working = false, lastError = nil},
+    AutoPlant = {enabled = false, working = false, lastError = nil},
+    AutoHarvest = {enabled = false, working = false, lastError = nil},
+    AutoFarm = {enabled = false, working = false, lastError = nil},
+    AutoCollect = {enabled = false, working = false, lastError = nil},
+    SeedSpawner = {enabled = false, working = false, lastError = nil},
+    EventAutomation = {enabled = false, working = false, lastError = nil},
+}
+
+local function getRemote(path)
+    if not path or path == "" or path == nil then return nil end
+    
+    -- Remove quotes if present (handles string format)
+    path = string.gsub(path, "^[\"']", "")
+    path = string.gsub(path, "[\"']$", "")
+    
+    local parts = {}
+    for part in string.gmatch(path, "[^.]+") do
+        table.insert(parts, part)
     end
-    log("✅ Script optimized for working features. Core farming features are safe.", "INFO")
-    log("💡 TIP: Enable Humanization for better safety. Adjust delay ranges for realistic behavior.", "INFO")
+    
+    if #parts == 0 then return nil end
+    
+    -- Start from game service
+    local current = game
+    for i, part in ipairs(parts) do
+        current = current:FindFirstChild(part)
+        if not current then 
+            log("Remote path error at '" .. part .. "' in: " .. path, "ERROR")
+            return nil 
+        end
+    end
+    
+    if current:IsA("RemoteEvent") or current:IsA("RemoteFunction") then
+        return current
+    else
+        log("Object found but not a RemoteEvent/RemoteFunction: " .. path, "ERROR")
+        return nil
+    end
+end
+
+-- Helper function to find remotes by watching RemoteSpy output
+local function findRemoteByName(remoteName)
+    -- Search in common locations
+    local locations = {
+        ReplicatedStorage,
+        ReplicatedStorage:FindFirstChild("Remotes"),
+        ReplicatedStorage:FindFirstChild("GameEvents"),
+        ReplicatedStorage:FindFirstChild("Events"),
+        ReplicatedStorage:FindFirstChild("RemoteEvents"),
+        ReplicatedStorage:FindFirstChild("Network"),
+    }
+    
+    for _, location in ipairs(locations) do
+        if location then
+            local remote = location:FindFirstChild(remoteName)
+            if remote and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
+                -- Build path
+                local path = remote:GetFullName()
+                log("Found remote: " .. path .. " (Use this in config.Remotes)", "INFO")
+                return remote, path
+            end
+        end
+    end
+    
+    -- Search descendants
+    for _, location in ipairs(locations) do
+        if location then
+            for _, remote in pairs(location:GetDescendants()) do
+                if (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) and 
+                   string.find(string.lower(remote.Name), string.lower(remoteName)) then
+                    local path = remote:GetFullName()
+                    log("Found similar remote: " .. path .. " (Check if this is correct)", "INFO")
+                    return remote, path
+                end
+            end
+        end
+    end
+    
+    return nil, nil
+end
+
+local function logFeatureStatus(feature, working, error)
+    FeatureStatus[feature].enabled = config[feature]
+    FeatureStatus[feature].working = working
+    FeatureStatus[feature].lastError = error
+    
+    if working then
+        log("✅ " .. feature .. " is WORKING", "SUCCESS")
+    elseif error then
+        log("❌ " .. feature .. " FAILED: " .. tostring(error), "ERROR")
+    else
+        log("⚠️ " .. feature .. " - Remote not configured", "WARNING")
+    end
+end
+
+-- Config Validation System
+local function validateConfig()
+    local errors = {}
+    local warnings = {}
+    
+    -- Check if config is still in default state (all remotes nil)
+    local allRemotesEmpty = true
+    for name, path in pairs(config.Remotes) do
+        if path and path ~= "" and path ~= nil then
+            allRemotesEmpty = false
+            break
+        end
+    end
+    
+    if allRemotesEmpty then
+        table.insert(errors, "NO REMOTES CONFIGURED! ALL FEATURES WILL FAIL!")
+        table.insert(errors, "You MUST use RemoteSpy to find remote names and update config.Remotes")
+    end
+    
+    -- Check enabled features have required remotes
+    local requiredRemotes = {}
+    if config.AutoSell and (not config.Remotes.Sell or config.Remotes.Sell == "") then
+        table.insert(errors, "AutoSell enabled but config.Remotes.Sell is NOT configured!")
+        table.insert(requiredRemotes, "Sell")
+    end
+    if config.AutoBuy and (not config.Remotes.Buy or config.Remotes.Buy == "") then
+        table.insert(errors, "AutoBuy enabled but config.Remotes.Buy is NOT configured!")
+        table.insert(requiredRemotes, "Buy")
+    end
+    if config.AutoPlant and (not config.Remotes.Plant or config.Remotes.Plant == "") then
+        table.insert(errors, "AutoPlant enabled but config.Remotes.Plant is NOT configured!")
+        table.insert(requiredRemotes, "Plant")
+    end
+    if config.AutoHarvest and (not config.Remotes.Harvest or config.Remotes.Harvest == "") then
+        table.insert(errors, "AutoHarvest enabled but config.Remotes.Harvest is NOT configured!")
+        table.insert(requiredRemotes, "Harvest")
+    end
+    if config.AutoFarm and config.WaterPlants and (not config.Remotes.Water or config.Remotes.Water == "") then
+        table.insert(warnings, "AutoFarm (watering) enabled but config.Remotes.Water is NOT configured!")
+    end
+    
+    -- Check BuyItems/PreferredSeeds are filled if features enabled
+    if config.AutoBuy and #config.BuyItems == 0 then
+        table.insert(warnings, "AutoBuy enabled but config.BuyItems is empty! Nothing will be bought.")
+        table.insert(warnings, "Fill config.BuyItems = {\"Item1\", \"Item2\"} with actual item names")
+    end
+    if config.AutoPlant and #config.PreferredSeeds == 0 then
+        table.insert(warnings, "AutoPlant enabled but config.PreferredSeeds is empty! Will try auto-detection (may fail)")
+        table.insert(warnings, "Fill config.PreferredSeeds = {\"Seed1\", \"Seed2\"} with actual seed names")
+    end
+    
+    return errors, warnings, requiredRemotes
+end
+
+-- Display warnings and check hard-coded remotes
+if config.ShowWarnings then
+    log("", "INFO")
+    log("", "INFO")
+    log(string.rep("=", 70), "INFO")
+    log("EXP-GAG Script v2.1 - CRITICAL SETUP REQUIRED", "INFO")
+    log(string.rep("=", 70), "INFO")
+    log("", "INFO")
+    log("⚠️⚠️⚠️ THIS SCRIPT WILL NOT WORK WITHOUT HARD-CODED REMOTES! ⚠️⚠️⚠️", "ERROR")
+    log("", "INFO")
+    
+    -- Validate configuration
+    local errors, warnings, requiredRemotes = validateConfig()
+    
+    if #errors > 0 then
+        log("🚨🚨🚨 CONFIGURATION ERRORS: 🚨🚨🚨", "ERROR")
+        for _, error in ipairs(errors) do
+            log("  ❌ " .. error, "ERROR")
+        end
+        log("", "INFO")
+    end
+    
+    if #warnings > 0 then
+        log("⚠️ CONFIGURATION WARNINGS:", "WARNING")
+        for _, warning in ipairs(warnings) do
+            log("  ⚠️ " .. warning, "WARNING")
+        end
+        log("", "INFO")
+    end
+    log("📋 REQUIRED SETUP STEPS:", "WARNING")
+    log("", "INFO")
+    log("STEP 1: Find Remote Names Using RemoteSpy", "INFO")
+    log("  → Enable RemoteSpy/EventLogger in your executor", "INFO")
+    log("  → Manually perform actions in-game (sell, buy, plant, harvest)", "INFO")
+    log("  → Watch RemoteSpy output to see which remotes fire", "INFO")
+    log("  → Copy the EXACT remote path (e.g., ReplicatedStorage.GameEvents.SellInventory)", "INFO")
+    log("", "INFO")
+    log("STEP 2: Update config.Remotes with ACTUAL remote paths", "INFO")
+    log("  → Edit config.Remotes in the script", "INFO")
+    log("  → Example: config.Remotes.Sell = \"ReplicatedStorage.GameEvents.SellInventory\"", "INFO")
+    log("  → Use EXACT paths from RemoteSpy - don't guess!", "INFO")
+    log("", "INFO")
+    log("STEP 3: Update config.Positions (OPTIONAL but recommended)", "INFO")
+    log("  → Walk to shop location in-game", "INFO")
+    log("  → Run: print(game.Players.LocalPlayer.Character.HumanoidRootPart.Position)", "INFO")
+    log("  → Copy coordinates and use: CFrame.new(x, y, z)", "INFO")
+    log("  → Example: config.Positions.SellShop = CFrame.new(90.08035, 0.98381, 3.02662)", "INFO")
+    log("", "INFO")
+    log("STEP 4: Fill config.BuyItems and config.PreferredSeeds", "INFO")
+    log("  → Fill with ACTUAL item/seed names from your game", "INFO")
+    log("  → Example: config.BuyItems = {\"WateringCan\", \"Fertilizer\"}", "INFO")
+    log("  → Example: config.PreferredSeeds = {\"BasicSeed\", \"GoldenSeed\"}", "INFO")
+    log("", "INFO")
+    log("STEP 5: Enable only 1-2 features at a time for testing", "INFO")
+    log("  → Start with: config.AutoSell = true", "INFO")
+    log("  → Test it works before enabling more features", "INFO")
+    log("", "INFO")
+    log("📚 EXAMPLE WORKING CONFIGURATION:", "INFO")
+    log("```lua", "INFO")
+    log("config.Remotes.Sell = \"ReplicatedStorage.GameEvents.SellInventory\"", "INFO")
+    log("config.Remotes.Buy = \"ReplicatedStorage.GameEvents.BuyItem\"", "INFO")
+    log("config.Positions.SellShop = CFrame.new(90.08035, 0.98381, 3.02662)", "INFO")
+    log("config.BuyItems = {\"WateringCan\", \"Fertilizer\"}", "INFO")
+    log("config.PreferredSeeds = {\"BasicSeed\", \"GoldenSeed\"}", "INFO")
+    log("config.AutoSell = true  -- Enable only this first!", "INFO")
+    log("```", "INFO")
+    log("", "INFO")
+    
+    -- Check if remotes are configured
+    local configuredRemotes = 0
+    local requiredRemotes = {}
+    local enabledFeatures = {}
+    
+    if config.AutoSell then
+        table.insert(enabledFeatures, "AutoSell")
+        table.insert(requiredRemotes, "Sell")
+    end
+    if config.AutoBuy then
+        table.insert(enabledFeatures, "AutoBuy")
+        table.insert(requiredRemotes, "Buy")
+    end
+    if config.AutoPlant then
+        table.insert(enabledFeatures, "AutoPlant")
+        table.insert(requiredRemotes, "Plant")
+    end
+    if config.AutoHarvest then
+        table.insert(enabledFeatures, "AutoHarvest")
+        table.insert(requiredRemotes, "Harvest")
+    end
+    if config.AutoFarm and config.WaterPlants then
+        table.insert(requiredRemotes, "Water")
+    end
+    
+    log("📊 CONFIGURATION STATUS:", "INFO")
+    log("Enabled Features: " .. (#enabledFeatures > 0 and table.concat(enabledFeatures, ", ") or "NONE"), "INFO")
+    log("", "INFO")
+    
+    for name, path in pairs(config.Remotes) do
+        if path and path ~= "" and path ~= nil then
+            local remote = getRemote(path)
+            if remote then
+                log("✅ Remote '" .. name .. "' FOUND: " .. path, "SUCCESS")
+                configuredRemotes = configuredRemotes + 1
+            else
+                log("❌ Remote '" .. name .. "' NOT FOUND: " .. path, "ERROR")
+                log("   → Check if path is correct or remote was renamed in game update", "ERROR")
+            end
+        elseif table.find(requiredRemotes, name) then
+            log("❌ Remote '" .. name .. "' NOT CONFIGURED (REQUIRED for enabled features!)", "ERROR")
+        end
+    end
+    
+    log("", "INFO")
+    
+    -- Show remote configuration status
+    log("📊 REMOTE CONFIGURATION STATUS:", "INFO")
+    
+    if configuredRemotes == 0 then
+        log("", "INFO")
+        log("🚨🚨🚨 NO REMOTES CONFIGURED! ALL FEATURES WILL FAIL! 🚨🚨🚨", "ERROR")
+        log("", "INFO")
+        log("❌ YOU MUST CONFIGURE REMOTES BEFORE ANY FEATURES WILL WORK!", "ERROR")
+        log("", "INFO")
+        log("QUICK SETUP GUIDE:", "WARNING")
+        log("1. Enable RemoteSpy in your executor", "INFO")
+        log("2. Manually perform action in-game (e.g., sell an item)", "INFO")
+        log("3. Look at RemoteSpy output - see which remote fired", "INFO")
+        log("4. Copy the FULL path shown (e.g., ReplicatedStorage.GameEvents.SellInventory)", "INFO")
+        log("5. Edit the script: config.Remotes.Sell = \"ReplicatedStorage.GameEvents.SellInventory\"", "INFO")
+        log("6. Save and reload the script", "INFO")
+        log("", "INFO")
+        log("⚠️ WITHOUT SETUP: All features will show 'Remote not found' errors!", "ERROR")
+    elseif configuredRemotes < #requiredRemotes then
+        log("", "INFO")
+        log("⚠️ WARNING: Some required remotes are missing!", "WARNING")
+        for _, req in ipairs(requiredRemotes) do
+            if not config.Remotes[req] or config.Remotes[req] == "" then
+                log("   ❌ Missing: " .. req .. " (Required for enabled features)", "WARNING")
+                log("      → Fill config.Remotes." .. req .. " with actual remote path", "WARNING")
+            end
+        end
+        log("", "INFO")
+        log("⚠️ Features with missing remotes will NOT work!", "WARNING")
+    else
+        log("✅ All required remotes are configured!", "SUCCESS")
+    end
+    
+    log("", "INFO")
+    log(string.rep("=", 70), "INFO")
+    log("", "INFO")
+    
+    if config.PetSpawner or config.EggSpawner then
+        log("⚠️ WARNING: Pet/Egg Spawner enabled - May fail or trigger bans.", "WARNING")
+    end
 end
 
 -- Cache System
@@ -348,6 +711,18 @@ local function findRemotes(pattern)
     end
     
     return nil
+end
+
+local function teleportTo(cframe)
+    if not humanoidRootPart or not humanoidRootPart.Parent then return false end
+    if not cframe then return false end
+    
+    local success = safeCall(function()
+        humanoidRootPart.CFrame = cframe
+    end)
+    
+    wait(0.1)
+    return success
 end
 
 local function walkTo(position, timeout)
@@ -1115,17 +1490,40 @@ function AutoFarm:IsPlantReady(plot)
 end
 
 function AutoFarm:WaterPlot(plot)
-    if not config.WaterPlants then return end
+    if not config.WaterPlants then return false end
+    if not plot then return false end
     
-    local waterRemote = findRemotes("water")
-    if waterRemote then
-        safeCall(function()
-            waterRemote[1]:FireServer(plot)
-        end)
+    -- Try hard-coded remote first (REQUIRED)
+    local waterRemote = nil
+    if config.Remotes.Water then
+        waterRemote = getRemote(config.Remotes.Water)
+        if not waterRemote then
+            return false
+        end
+    else
+        -- Fallback to search (not recommended)
+        local remotes = findRemotes("water")
+        if remotes and remotes[1] then
+            waterRemote = remotes[1]
+        else
+            return false
+        end
+    end
+    
+    -- Water using hard-coded remote
+    local success = safeCall(function()
+        if waterRemote:IsA("RemoteEvent") then
+            waterRemote:FireServer(plot)
+        elseif waterRemote:IsA("RemoteFunction") then
+            waterRemote:InvokeServer(plot)
+        end
+    end)
+    
+    if success then
         return true
     end
     
-    -- Try tool method
+    -- Try tool method as fallback
     local tool = player.Backpack:FindFirstChild("Water") or character:FindFirstChild("Water")
     if not tool then
         tool = player.Backpack:FindFirstChildOfClass("Tool")
@@ -1211,45 +1609,67 @@ AutoPlant.Enabled = false
 
 function AutoPlant:PlantSeed(plot, seedName)
     if not config.AutoPlant then return false end
+    if not plot or not seedName then return false end
+    
+    -- Try hard-coded remote first (REQUIRED)
+    local plantRemote = nil
+    if config.Remotes.Plant then
+        plantRemote = getRemote(config.Remotes.Plant)
+        if not plantRemote then
+            logFeatureStatus("AutoPlant", false, "Remote not found: " .. config.Remotes.Plant)
+            return false
+        end
+    else
+        -- Fallback to search (not recommended)
+        local remotes = findRemotes("plant") or findRemotes("seed")
+        if remotes and remotes[1] then
+            plantRemote = remotes[1]
+            log("⚠️ Using auto-detected remote (not recommended - hard-code it!)", "WARNING")
+        else
+            logFeatureStatus("AutoPlant", false, "No remote configured or found")
+            return false
+        end
+    end
     
     local plotPos = plot:FindFirstChild("Position")
     plotPos = plotPos and plotPos.Value or (plot:IsA("BasePart") and plot.Position or plot:FindFirstChildOfClass("BasePart") and plot:FindFirstChildOfClass("BasePart").Position)
     
-    if not plotPos then return false end
+    if not plotPos then 
+        logFeatureStatus("AutoPlant", false, "Plot position not found")
+        return false
+    end
     
     if not walkTo(plotPos) then
-        log("Failed to reach plot", "WARNING")
+        logFeatureStatus("AutoPlant", false, "Failed to reach plot")
         return false
     end
     
     wait(0.3)
     
-    local plantRemote = findRemotes("plant") or findRemotes("seed")
-    
-    if plantRemote then
-        for attempt = 1, config.RetryAttempts do
-            local success = safeCall(function()
-                -- Try multiple argument patterns (real-world variations)
-                local remote = plantRemote[1]
-                if remote:IsA("RemoteEvent") then
-                    -- Try common patterns
-                    remote:FireServer(plot, seedName)
-                    remote:FireServer(seedName, plot)
-                    remote:FireServer(plot)
-                elseif remote:IsA("RemoteFunction") then
-                    remote:InvokeServer(plot, seedName)
-                    remote:InvokeServer(seedName, plot)
-                end
-            end)
-            if success then
-                log("Planted: " .. tostring(seedName), "SUCCESS")
-                return true
+    -- Plant using hard-coded remote
+    for attempt = 1, config.RetryAttempts do
+        local success = safeCall(function()
+            if plantRemote:IsA("RemoteEvent") then
+                -- Try common patterns
+                plantRemote:FireServer(plot, seedName)
+                plantRemote:FireServer(seedName, plot)
+                plantRemote:FireServer(plot)
+            elseif plantRemote:IsA("RemoteFunction") then
+                plantRemote:InvokeServer(plot, seedName)
+                plantRemote:InvokeServer(seedName, plot)
             end
-            wait(config.RetryDelay)
+        end)
+        if success then
+            logFeatureStatus("AutoPlant", true, nil)
+            log("Planted: " .. tostring(seedName), "SUCCESS")
+            return true
         end
+        wait(config.RetryDelay)
     end
     
-    -- Try tool method
+    logFeatureStatus("AutoPlant", false, "Failed to plant: " .. tostring(seedName))
+    
+    -- Try tool method as fallback
     local tool = player.Backpack:FindFirstChild("Plant") or character:FindFirstChild("Plant")
     if not tool then
         for _, t in pairs(player.Backpack:GetChildren()) do
@@ -1267,6 +1687,7 @@ function AutoPlant:PlantSeed(plot, seedName)
             tool:Activate()
         end)
         wait(0.2)
+        logFeatureStatus("AutoPlant", true, nil)
         return true
     end
     
@@ -1335,35 +1756,65 @@ AutoHarvest.Enabled = false
 
 function AutoHarvest:HarvestPlot(plot)
     if not config.AutoHarvest then return false end
+    if not plot then return false end
+    
+    -- Try hard-coded remote first (REQUIRED)
+    local harvestRemote = nil
+    if config.Remotes.Harvest then
+        harvestRemote = getRemote(config.Remotes.Harvest)
+        if not harvestRemote then
+            logFeatureStatus("AutoHarvest", false, "Remote not found: " .. config.Remotes.Harvest)
+            return false
+        end
+    else
+        -- Fallback to search (not recommended)
+        local remotes = findRemotes("harvest") or findRemotes("pick")
+        if remotes and remotes[1] then
+            harvestRemote = remotes[1]
+            log("⚠️ Using auto-detected remote (not recommended - hard-code it!)", "WARNING")
+        else
+            logFeatureStatus("AutoHarvest", false, "No remote configured or found")
+            return false
+        end
+    end
     
     local plotPos = plot:FindFirstChild("Position")
     plotPos = plotPos and plotPos.Value or (plot:IsA("BasePart") and plot.Position or plot:FindFirstChildOfClass("BasePart") and plot:FindFirstChildOfClass("BasePart").Position)
     
-    if not plotPos then return false end
+    if not plotPos then 
+        logFeatureStatus("AutoHarvest", false, "Plot position not found")
+        return false
+    end
     
     if not walkTo(plotPos) then
-        log("Failed to reach plot for harvest", "WARNING")
+        logFeatureStatus("AutoHarvest", false, "Failed to reach plot for harvest")
         return false
     end
     
     wait(0.3)
     
-    local harvestRemote = findRemotes("harvest") or findRemotes("pick")
-    
-    if harvestRemote then
-        for attempt = 1, config.RetryAttempts do
-            local success = safeCall(function()
-                harvestRemote[1]:FireServer(plot)
-            end)
-            if success then
-                log("Harvested plot", "SUCCESS")
-                return true
+    -- Harvest using hard-coded remote
+    for attempt = 1, config.RetryAttempts do
+        local success = safeCall(function()
+            if harvestRemote:IsA("RemoteEvent") then
+                harvestRemote:FireServer(plot)
+                harvestRemote:FireServer(plot.Name)
+            elseif harvestRemote:IsA("RemoteFunction") then
+                harvestRemote:InvokeServer(plot)
+                harvestRemote:InvokeServer(plot.Name)
             end
-            wait(config.RetryDelay)
+        end)
+        if success then
+            logFeatureStatus("AutoHarvest", true, nil)
+            log("Harvested plot", "SUCCESS")
+            return true
         end
+        wait(config.RetryDelay)
     end
     
-    -- Try tool method
+    logFeatureStatus("AutoHarvest", false, "Failed to harvest plot")
+    
+    -- Try tool method as fallback
     local tool = player.Backpack:FindFirstChild("Harvest") or character:FindFirstChild("Harvest")
     if not tool then
         for _, t in pairs(player.Backpack:GetChildren()) do
@@ -1381,6 +1832,7 @@ function AutoHarvest:HarvestPlot(plot)
             tool:Activate()
         end)
         wait(0.2)
+        logFeatureStatus("AutoHarvest", true, nil)
         return true
     end
     
@@ -1531,6 +1983,34 @@ end
 function AutoSell:SellItems()
     if not config.AutoSell then return end
     
+    -- Try hard-coded remote first (REQUIRED)
+    local sellRemote = nil
+    if config.Remotes.Sell and config.Remotes.Sell ~= "" then
+        sellRemote = getRemote(config.Remotes.Sell)
+        if not sellRemote then
+            logFeatureStatus("AutoSell", false, "Remote not found: " .. tostring(config.Remotes.Sell))
+            log("❌ AutoSell FAILED: Remote path incorrect or remote doesn't exist!", "ERROR")
+            log("   → Check config.Remotes.Sell = \"" .. tostring(config.Remotes.Sell) .. "\"", "ERROR")
+            log("   → Use RemoteSpy to find the correct remote path", "ERROR")
+            return
+        end
+    else
+        -- Fallback to search (not recommended)
+        log("⚠️ AutoSell: No remote configured, trying auto-detection...", "WARNING")
+        local remotes = findRemotes("sell") or findRemotes("market") or findRemotes("trade")
+        if remotes and remotes[1] then
+            sellRemote = remotes[1]
+            log("⚠️ Using auto-detected remote: " .. sellRemote:GetFullName() .. " (not recommended!)", "WARNING")
+            log("   → Hard-code this in config.Remotes.Sell = \"" .. sellRemote:GetFullName() .. "\"", "WARNING")
+        else
+            logFeatureStatus("AutoSell", false, "No remote configured and auto-detection failed")
+            log("❌ AutoSell CANNOT WORK: No remote found!", "ERROR")
+            log("   → You MUST configure config.Remotes.Sell with actual remote path", "ERROR")
+            log("   → Use RemoteSpy to find the correct remote path", "ERROR")
+            return
+        end
+    end
+    
     local inventory = self:GetInventory()
     if #inventory == 0 then
         log("No items in inventory to sell", "INFO")
@@ -1542,18 +2022,22 @@ function AutoSell:SellItems()
         return
     end
     
-    local sellShop = self:FindSellShop()
-    if not sellShop then
-        log("Sell shop not found - trying alternative methods", "WARNING")
-        -- Try to sell without shop (some games allow remote selling)
+    -- Use hard-coded position or find shop
+    if config.UseTeleport and config.Positions.SellShop then
+        if not teleportTo(config.Positions.SellShop) then
+            logFeatureStatus("AutoSell", false, "Failed to teleport to sell shop")
+            return
+        end
+        wait(0.1)
     else
-        local shopPos = sellShop:FindFirstChild("HumanoidRootPart")
-        shopPos = shopPos and shopPos.Position or (sellShop:IsA("BasePart") and sellShop.Position or nil)
-        
-        if shopPos then
-            if getDistance(getPlayerPosition(), shopPos) > 20 then
+        local sellShop = self:FindSellShop()
+        if sellShop then
+            local shopPos = sellShop:FindFirstChild("HumanoidRootPart")
+            shopPos = shopPos and shopPos.Position or (sellShop:IsA("BasePart") and sellShop.Position or nil)
+            
+            if shopPos and getDistance(getPlayerPosition(), shopPos) > 20 then
                 if not walkTo(shopPos) then
-                    log("Failed to reach sell shop", "WARNING")
+                    logFeatureStatus("AutoSell", false, "Failed to reach sell shop")
                     return
                 end
                 wait(0.5)
@@ -1561,52 +2045,47 @@ function AutoSell:SellItems()
         end
     end
     
-    -- Try multiple remote patterns
-    local sellRemote = findRemotes("sell") or findRemotes("market") or findRemotes("trade")
+    -- Sell using hard-coded remote
     local sold = 0
+    local originalCFrame = humanoidRootPart and humanoidRootPart.CFrame or nil
     
-    if sellRemote then
-        log("Found sell remote, selling items...", "INFO")
-        for _, item in ipairs(inventory) do
-            local shouldKeep = false
-            for _, keepItem in ipairs(config.PreferredItems) do
-                if item.Name == keepItem or string.find(string.lower(item.Name), string.lower(keepItem)) then
-                    shouldKeep = true
-                    break
-                end
-            end
-            
-            if not shouldKeep then
-                for attempt = 1, config.RetryAttempts do
-                    local success = safeCall(function()
-                        local remote = sellRemote[1]
-                        if remote:IsA("RemoteEvent") then
-                            -- Try multiple argument patterns
-                            remote:FireServer(item)
-                            remote:FireServer(item.Name)
-                            remote:FireServer(item, "Sell")
-                        elseif remote:IsA("RemoteFunction") then
-                            remote:InvokeServer(item)
-                            remote:InvokeServer(item.Name)
-                        end
-                    end)
-                    if success then
-                        sold = sold + 1
-                        break
-                    end
-                    wait(config.RetryDelay)
-                end
-                humanizedWait(randomDelay(config.SellDelayMin, config.SellDelayMax))
+    for _, item in ipairs(inventory) do
+        local shouldKeep = false
+        for _, keepItem in ipairs(config.PreferredItems) do
+            if item.Name == keepItem or string.find(string.lower(item.Name), string.lower(keepItem)) then
+                shouldKeep = true
+                break
             end
         end
-    else
-        log("No sell remote found - cannot sell items", "WARNING")
+        
+        if not shouldKeep then
+            local success = safeCall(function()
+                if sellRemote:IsA("RemoteEvent") then
+                    sellRemote:FireServer(item)
+                elseif sellRemote:IsA("RemoteFunction") then
+                    sellRemote:InvokeServer(item)
+                end
+            end)
+            
+            if success then
+                sold = sold + 1
+            end
+            
+            humanizedWait(randomDelay(config.SellDelayMin, config.SellDelayMax))
+        end
+    end
+    
+    -- Return to original position if teleported
+    if config.UseTeleport and originalCFrame and sold > 0 then
+        wait(0.1)
+        teleportTo(originalCFrame)
     end
     
     if sold > 0 then
+        logFeatureStatus("AutoSell", true, nil)
         log("Sold " .. sold .. " items successfully", "SUCCESS")
-    elseif #inventory > 0 then
-        log("Could not sell items - check remote names or shop location", "WARNING")
+    else
+        logFeatureStatus("AutoSell", false, "No items sold - check remote arguments")
     end
 end
 
@@ -1690,87 +2169,81 @@ end
 function AutoBuy:BuyItem(itemName)
     if not itemName then return false end
     
-    -- Try to buy without shop first (some games allow remote buying)
-    local buyRemote = findRemotes("buy") or findRemotes("purchase") or findRemotes("shop")
-    
-    if buyRemote then
-        for attempt = 1, config.RetryAttempts do
-            local success = safeCall(function()
-                local remote = buyRemote[1]
-                if remote:IsA("RemoteEvent") then
-                    -- Try multiple argument patterns
-                    remote:FireServer(itemName)
-                    remote:FireServer("Buy", itemName)
-                    remote:FireServer(itemName, "Buy")
-                elseif remote:IsA("RemoteFunction") then
-                    remote:InvokeServer(itemName)
-                    remote:InvokeServer("Buy", itemName)
-                end
-            end)
-            if success then
-                log("Bought: " .. tostring(itemName), "SUCCESS")
-                return true
-            end
-            wait(config.RetryDelay)
+    -- Try hard-coded remote first (REQUIRED)
+    local buyRemote = nil
+    if config.Remotes.Buy then
+        buyRemote = getRemote(config.Remotes.Buy)
+        if not buyRemote then
+            logFeatureStatus("AutoBuy", false, "Remote not found: " .. config.Remotes.Buy)
+            return false
+        end
+    else
+        -- Fallback to search (not recommended)
+        local remotes = findRemotes("buy") or findRemotes("purchase") or findRemotes("shop")
+        if remotes and remotes[1] then
+            buyRemote = remotes[1]
+            log("⚠️ Using auto-detected remote (not recommended - hard-code it!)", "WARNING")
+        else
+            logFeatureStatus("AutoBuy", false, "No remote configured or found")
+            return false
         end
     end
     
-    -- If remote buying fails, try shop interaction
-    local buyShop = self:FindBuyShop()
-    if buyShop then
-        local shopPos = buyShop:FindFirstChild("HumanoidRootPart")
-        shopPos = shopPos and shopPos.Position or (buyShop:IsA("BasePart") and buyShop.Position or nil)
-        
-        if shopPos then
-            if getDistance(getPlayerPosition(), shopPos) > 20 then
+    -- Use hard-coded position or find shop
+    local originalCFrame = humanoidRootPart and humanoidRootPart.CFrame or nil
+    
+    if config.UseTeleport and config.Positions.BuyShop then
+        if not teleportTo(config.Positions.BuyShop) then
+            logFeatureStatus("AutoBuy", false, "Failed to teleport to buy shop")
+            return false
+        end
+        wait(0.1)
+    else
+        local buyShop = self:FindBuyShop()
+        if buyShop then
+            local shopPos = buyShop:FindFirstChild("HumanoidRootPart")
+            shopPos = shopPos and shopPos.Position or (buyShop:IsA("BasePart") and buyShop.Position or nil)
+            
+            if shopPos and getDistance(getPlayerPosition(), shopPos) > 20 then
                 if not walkTo(shopPos) then
-                    log("Failed to reach buy shop", "WARNING")
+                    logFeatureStatus("AutoBuy", false, "Failed to reach buy shop")
                     return false
                 end
                 wait(0.5)
             end
-            
-            -- Try buying again after reaching shop
-            if buyRemote then
-                for attempt = 1, config.RetryAttempts do
-                    local success = safeCall(function()
-                        local remote = buyRemote[1]
-                        if remote:IsA("RemoteEvent") then
-                            remote:FireServer(itemName)
-                            remote:FireServer("Buy", itemName)
-                        elseif remote:IsA("RemoteFunction") then
-                            remote:InvokeServer(itemName)
-                        end
-                    end)
-                    if success then
-                        log("Bought: " .. tostring(itemName), "SUCCESS")
-                        return true
-                    end
-                    wait(config.RetryDelay)
-                end
-            end
-            
-            -- Try GUI method
-            for _, gui in pairs(player.PlayerGui:GetDescendants()) do
-                if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and 
-                   (string.find(string.lower(gui.Text or gui.Name), string.lower(itemName)) or 
-                    string.find(string.lower(gui.Text or gui.Name), "buy")) then
-                    safeCall(function()
-                        if gui.Activated then
-                            gui.Activated:Fire()
-                        elseif gui.MouseButton1Click then
-                            gui.MouseButton1Click:Fire()
-                        end
-                    end)
-                    log("Clicked buy button for: " .. tostring(itemName), "INFO")
-                    return true
-                end
-            end
         end
-    else
-        log("Buy shop not found and remote buying failed for: " .. tostring(itemName), "WARNING")
     end
     
+    -- Buy using hard-coded remote
+    for attempt = 1, config.RetryAttempts do
+        local success = safeCall(function()
+            if buyRemote:IsA("RemoteEvent") then
+                buyRemote:FireServer(itemName)
+            elseif buyRemote:IsA("RemoteFunction") then
+                buyRemote:InvokeServer(itemName)
+            end
+        end)
+        
+        if success then
+            -- Return to original position if teleported
+            if config.UseTeleport and originalCFrame then
+                wait(0.1)
+                teleportTo(originalCFrame)
+            end
+            
+            logFeatureStatus("AutoBuy", true, nil)
+            log("Bought: " .. tostring(itemName), "SUCCESS")
+            return true
+        end
+        wait(config.RetryDelay)
+    end
+    
+    -- Return to original position if teleported
+    if config.UseTeleport and originalCFrame then
+        teleportTo(originalCFrame)
+    end
+    
+    logFeatureStatus("AutoBuy", false, "Failed to buy: " .. tostring(itemName))
     return false
 end
 
@@ -2201,7 +2674,21 @@ _G.EXPGAG = {
     GUI = GUI,
     Logs = Logs,
     Humanization = Humanization,
+    FeatureStatus = FeatureStatus,
+    getRemote = getRemote,
+    findRemoteByName = findRemoteByName,
+    teleportTo = teleportTo,
 }
 
+log("", "INFO")
 log("EXP-GAG Script loaded! Use _G.EXPGAG to control features.", "SUCCESS")
-log("Example: _G.EXPGAG.Stop() to stop all features", "INFO")
+log("", "INFO")
+log("📖 QUICK COMMANDS:", "INFO")
+log("  _G.EXPGAG.Stop() - Stop all features", "INFO")
+log("  _G.EXPGAG.Start() - Start all features", "INFO")
+log("  _G.EXPGAG.FeatureStatus - Check which features are working", "INFO")
+log("  _G.EXPGAG.findRemoteByName(\"sell\") - Search for remotes by name", "INFO")
+log("", "INFO")
+log("⚠️ REMEMBER: Features will NOT work until you configure remotes!", "WARNING")
+log("  See startup logs above for configuration status", "INFO")
+log("  Read SETUP_GUIDE.md for detailed instructions", "INFO")
